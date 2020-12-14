@@ -17,7 +17,7 @@ def sigmoid(x):
     """
 
     ### YOUR CODE HERE (~1 Line)
-
+    s = 1/(1+np.exp(-1*x))
     ### END YOUR CODE
 
     return s
@@ -118,11 +118,19 @@ def negSamplingLossAndGradient(
     negSampleWordIndices = getNegativeSamples(outsideWordIdx, dataset, K)
     indices = [outsideWordIdx] + negSampleWordIndices
 
-    ### YOUR CODE HERE (~10 Lines)
-
     ### Please use your implementation of sigmoid in here.
-
-    ### END YOUR CODE
+    u_o = outsideVectors[outsideWordIdx]
+    pos_o = sigmoid(u_o @ centerWordVec)
+    loss = -1 * np.log(pos_o)
+    gradCenterVec = (pos_o - 1) * u_o
+    gradOutsideVecs = np.zeros_like(outsideVectors)
+    gradOutsideVecs[outsideWordIdx, :] = (pos_o - 1) * centerWordVec
+    for neg_word_idx in negSampleWordIndices:
+        u_k = outsideVectors[neg_word_idx]
+        gradCenterVec += sigmoid(u_k @ centerWordVec) * u_k
+        loss -= np.log(sigmoid(-1 * u_k @ centerWordVec))
+        gradOutsideVecs[neg_word_idx, :] += sigmoid(u_k @ centerWordVec) * centerWordVec
+    # ### END YOUR CODE
 
     return loss, gradCenterVec, gradOutsideVecs
 
@@ -170,12 +178,6 @@ def skipgram(currentCenterWord, windowSize, outsideWords, word2Ind,
     v_c = centerWordVectors[word2Ind[currentCenterWord], :]
     for u_o in outsideWords:
         u_o_ind = word2Ind[u_o]
-    #     y_o_chislitel = np.exp(outsideVectors[u_o_ind,:]@v_c)
-    #     y_o_znaminatel = 0
-    #     for u_w in word2Ind.keys():
-    #         u_w_ind = word2Ind[u_w]
-    #         y_o_znaminatel += np.exp(outsideVectors[u_w_ind,:]@v_c)
-    #     y = y_o_chislitel/y_o_znaminatel
         loss_, gradCenterVecs_, gradOutsideVecs_ = word2vecLossAndGradient(v_c, u_o_ind, outsideVectors, dataset)
         loss += loss_
         gradCenterVecs[word2Ind[currentCenterWord],:] += gradCenterVecs_
@@ -237,12 +239,12 @@ def test_word2vec():
         dummy_vectors, "naiveSoftmaxLossAndGradient Gradient")
     grad_tests_softmax(skipgram, dummy_tokens, dummy_vectors, dataset)
 
-    # print("==== Gradient check for skip-gram with negSamplingLossAndGradient ====")
-    # gradcheck_naive(lambda vec: word2vec_sgd_wrapper(
-    #     skipgram, dummy_tokens, vec, dataset, 5, negSamplingLossAndGradient),
-    #     dummy_vectors, "negSamplingLossAndGradient Gradient")
-    #
-    # grad_tests_negsamp(skipgram, dummy_tokens, dummy_vectors, dataset, negSamplingLossAndGradient)
+    print("==== Gradient check for skip-gram with negSamplingLossAndGradient ====")
+    gradcheck_naive(lambda vec: word2vec_sgd_wrapper(
+        skipgram, dummy_tokens, vec, dataset, 5, negSamplingLossAndGradient),
+        dummy_vectors, "negSamplingLossAndGradient Gradient")
+
+    grad_tests_negsamp(skipgram, dummy_tokens, dummy_vectors, dataset, negSamplingLossAndGradient)
 
 
 if __name__ == "__main__":
