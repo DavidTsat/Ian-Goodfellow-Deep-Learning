@@ -166,7 +166,7 @@ def main():
         hidden_size=HIDDEN_SIZE,
         char_embedding_size=EMBED_SIZE,
         target_vocab=char_vocab)
-
+    question_1e_sanity_check()
     if args['1e']:
         question_1e_sanity_check()
     elif args['1h']:

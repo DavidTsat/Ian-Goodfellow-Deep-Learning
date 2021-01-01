@@ -63,6 +63,9 @@ def pad_sents(sents, pad_token):
     """
     sents_padded = []
 
+    ### YOUR CODE HERE (~6 Lines)
+    sents_padded = torch.nn.utils.rnn.pad_sequence([torch.tensor(s) for s in sents], batch_first=True).tolist()
+
     ### COPY OVER YOUR CODE FROM ASSIGNMENT 4
 
     ### END YOUR CODE FROM ASSIGNMENT 4

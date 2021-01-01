@@ -149,9 +149,10 @@ class VocabEntry(object):
 
         @returns sents_var: tensor of (max_sentence_length, batch_size, max_word_length)
         """
+
         char_indices = self.words2charindices(sents)
         char_indices = pad_sents_char(char_indices, self.char_pad)
-        sents_var = torch.Tensor(char_indices).view(max([len(c) for c in char_indices]), len(char_indices), -1).contiguous()
+        sents_var = torch.tensor(char_indices, dtype=torch.long, device=device).permute(1,0,2).contiguous()
 
         ### YOUR CODE HERE for part 1e
         ### TODO:
