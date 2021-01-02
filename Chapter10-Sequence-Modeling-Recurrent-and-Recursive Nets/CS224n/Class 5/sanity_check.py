@@ -36,9 +36,9 @@ import torch.nn.utils
 #----------
 # CONSTANTS
 #----------
-BATCH_SIZE = 5
+BATCH_SIZE = 1
 EMBED_SIZE = 3
-HIDDEN_SIZE = 4
+HIDDEN_SIZE = 256
 DROPOUT_RATE = 0.0
 
 class DummyVocab():
@@ -167,7 +167,7 @@ def main():
         char_embedding_size=EMBED_SIZE,
         target_vocab=char_vocab)
 
-    # question_2b_sanity_check(decoder)
+    # question_2c_sanity_check(decoder)
     if args['1e']:
         question_1e_sanity_check()
     elif args['1h']:

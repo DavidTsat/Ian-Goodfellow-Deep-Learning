@@ -40,10 +40,10 @@ class ModelEmbeddings(nn.Module):
         self.word_embed_size = word_embed_size
         self.vocab = vocab
         self.e_char = 50
-        self.embedding = nn.Embedding(len(self.vocab.char2id), self.e_char)
-        self.cnn = CNN(self.e_char, word_embed_size)
+        self.embedding = nn.Embedding(len(self.vocab.char2id), self.e_char).to("cuda")
+        self.cnn = CNN(self.e_char, word_embed_size).to("cuda")
         self.relu = nn.ReLU()
-        self.highway = Highway(self.word_embed_size)
+        self.highway = Highway(self.word_embed_size).to("cuda")
         self.dropout = nn.Dropout(0.3)
         ### YOUR CODE HERE for part 1h
 
@@ -60,13 +60,14 @@ class ModelEmbeddings(nn.Module):
         """
         ### YOUR CODE HERE for part 1h
         # print('IIIIII', input.shape, input.contiguous().permute(1,0,2).shape)
+        input = input.to("cuda")
         x_embeds = self.embedding(input.permute(1,0,2))
         # print('OOOOOOOOO', input.contiguous().permute(1,0,2).shape)
-        x_reshapeds = x_embeds.permute(0,1,3,2)
+        x_reshapeds = x_embeds.permute(0,1,3,2).contiguous()
         # x_conv_out = torch.zeros(input.shape[0], input.shape[1], self.word_embed_size, x_reshapeds.shape[-1]+2*self.cnn.padding-self.cnn.kernel_size+1)
-        x_conv_outs = torch.zeros(input.shape[0], input.shape[1], self.word_embed_size)
+        x_conv_outs = torch.zeros(input.shape[0], input.shape[1], self.word_embed_size).to("cuda")
         for i in range(x_reshapeds.shape[1]):
-            batch_words = x_reshapeds[:,i,:,:]
+            batch_words = x_reshapeds[:,i,:,:].clone()
             batch_words_convs = self.relu(self.cnn(batch_words))
             _, batch_words_convs = torch.max(batch_words_convs, dim=-1)
             x_conv_outs[i] = batch_words_convs

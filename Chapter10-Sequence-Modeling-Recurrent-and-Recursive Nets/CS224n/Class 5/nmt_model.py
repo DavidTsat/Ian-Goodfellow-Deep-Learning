@@ -42,22 +42,22 @@ class NMT(nn.Module):
         """
         super(NMT, self).__init__()
 
-        self.model_embeddings_source = ModelEmbeddings(word_embed_size, vocab.src)
-        self.model_embeddings_target = ModelEmbeddings(word_embed_size, vocab.tgt)
+        self.model_embeddings_source = ModelEmbeddings(word_embed_size, vocab.src).to("cuda")
+        self.model_embeddings_target = ModelEmbeddings(word_embed_size, vocab.tgt).to("cuda")
 
         self.hidden_size = hidden_size
         self.dropout_rate = dropout_rate
         self.vocab = vocab
 
         ### COPY OVER YOUR CODE FROM ASSIGNMENT 4
-        self.encoder = nn.LSTM(input_size=word_embed_size, hidden_size=self.hidden_size, bidirectional=True, bias=True)
-        self.decoder = nn.LSTM(input_size=word_embed_size + hidden_size, hidden_size=self.hidden_size, bidirectional=False, bias=True)
-        self.h_projection = nn.Linear(2 * self.hidden_size, self.hidden_size, bias=False)
-        self.c_projection = nn.Linear(2 * self.hidden_size, self.hidden_size, bias=False)
-        self.att_projection = nn.Linear(2 * self.hidden_size, self.hidden_size, bias=False)
-        self.combined_output_projection = nn.Linear(3 * self.hidden_size, self.hidden_size, bias=False)
-        self.target_vocab_projection = nn.Linear(self.hidden_size, len(self.vocab.tgt), bias=False)
-        self.dropout = nn.Dropout(self.dropout_rate).to(self.device)
+        self.encoder = nn.LSTM(input_size=word_embed_size, hidden_size=self.hidden_size, bidirectional=True, bias=True).to("cuda")
+        self.decoder = nn.LSTM(input_size=word_embed_size + hidden_size, hidden_size=self.hidden_size, bidirectional=False, bias=True).to("cuda")
+        self.h_projection = nn.Linear(2 * self.hidden_size, self.hidden_size, bias=False).to("cuda")
+        self.c_projection = nn.Linear(2 * self.hidden_size, self.hidden_size, bias=False).to("cuda")
+        self.att_projection = nn.Linear(2 * self.hidden_size, self.hidden_size, bias=False).to("cuda")
+        self.combined_output_projection = nn.Linear(3 * self.hidden_size, self.hidden_size, bias=False).to("cuda")
+        self.target_vocab_projection = nn.Linear(self.hidden_size, len(self.vocab.tgt), bias=False).to("cuda")
+        self.dropout = nn.Dropout(self.dropout_rate).to("cuda")
         ### END YOUR CODE FROM ASSIGNMENT 4
 
         if not no_char_decoder:
@@ -351,6 +351,7 @@ class NMT(nn.Module):
                 decodedWords = self.charDecoder.decode_greedy(
                     (decoderStatesForUNKsHere.unsqueeze(0), decoderStatesForUNKsHere.unsqueeze(0)), max_length=21,
                     device=self.device)
+                # print('decodedWordsdecodedWordsdecodedWords', decodedWords)
                 assert len(decodedWords) == decoderStatesForUNKsHere.size()[0], "Incorrect number of decoded words"
                 for hyp in new_hypotheses:
                     if hyp[-1].startswith("<unk>"):

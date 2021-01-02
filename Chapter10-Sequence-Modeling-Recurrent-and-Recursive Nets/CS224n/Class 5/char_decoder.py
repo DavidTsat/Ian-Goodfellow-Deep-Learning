@@ -22,10 +22,10 @@ class CharDecoder(nn.Module):
         """
         super(CharDecoder, self).__init__()
         self.target_vocab = target_vocab
-        self.charDecoder = nn.LSTM(char_embedding_size, hidden_size)
-        self.char_output_projection = nn.Linear(hidden_size, len(self.target_vocab.char2id))
+        self.charDecoder = nn.LSTM(char_embedding_size, hidden_size).to("cuda")
+        self.char_output_projection = nn.Linear(hidden_size, len(self.target_vocab.char2id)).to("cuda")
         self.decoderCharEmb = nn.Embedding(len(self.target_vocab.char2id), char_embedding_size,
-                                           padding_idx=self.target_vocab.char_pad)
+                                           padding_idx=self.target_vocab.char_pad).to("cuda")
 
     def forward(self, input, dec_hidden=None):
         """ Forward pass of character decoder.
@@ -47,7 +47,7 @@ class CharDecoder(nn.Module):
             # if len(x_t.size())==2:
             #     x_t = x_t.unsqueeze(0)
             h_t, dec_hidden = self.charDecoder(x_t, dec_hidden)
-            h_ts.append(h_t.squeeze())
+            h_ts.append(h_t[0])
 
         s_ts = [self.char_output_projection(h_t) for h_t in h_ts]
 
@@ -73,23 +73,29 @@ class CharDecoder(nn.Module):
 
         loss = 0
         nll_loss = nn.CrossEntropyLoss()
-        s_ts, dec_hidden = self.forward(char_sequence, dec_hidden)
-        # char_sequence[:-1, :] = char_sequence[1:,:]
-        # char_sequence[-1,:] = self.target_vocab.char_pad
-        char_sequence = torch.roll(char_sequence, -1, 0)
+        target_sequence = char_sequence[1:].clone()
+        char_sequence[char_sequence == self.target_vocab.end_of_word] = self.target_vocab.char_pad
+        x_sequence = char_sequence[:-1].clone()
+        # char_sequence = torch.roll(char_sequence, -1, 0).clone()
+        # char_sequence[-1, :] = self.target_vocab.char_pad
+        s_ts, dec_hidden = self.forward(x_sequence, dec_hidden)
+        # char_sequence[:-1, :] = char_sequence[1:,:].clone()
+        # char_sequence[-1] = self.target_vocab.char_pad
+        # char_sequence = torch.roll(char_sequence, -1, 0).clone()
+        # char_sequence[-1, :] = self.target_vocab.char_pad
         for i in range(s_ts.shape[0]):
-            target = char_sequence[i]
+            target = target_sequence[i]
             s_t = s_ts[i].clone()
             # s_t*(1 - (target == self.target_vocab.char_pad).int())
             for j, word in enumerate(target):
                 if word == self.target_vocab.char_pad:
-                    s_t[j,:] = torch.zeros_like(s_t[j,:].clone())
+                    # s_t[j,:] = torch.zeros_like(s_t[j,:].clone())
                     # s_t[j][self.target_vocab.char_pad] = torch.tensor(1, dtype=s_t.dtype)
-                    # s_t[j, :] = 0
+                    s_t[j] = 0
                     s_t[j][self.target_vocab.char_pad] = 1
 
             # print(i, s_ts.shape, 'AAAAAA', s_t.shape, target.shape)
-            loss += nll_loss(s_t, target)
+            loss = loss + nll_loss(s_t, target)
             # print(i, s_ts.shape, 'VVVVVV', s_t.shape, target.shape)
         return loss
         ### END YOUR CODE
@@ -103,9 +109,10 @@ class CharDecoder(nn.Module):
         @returns decodedWords (List[str]): a list (of length batch_size) of strings, each of which has length <= max_length.
                               The decoded strings should NOT contain the start-of-word and end-of-word characters.
         """
+        # print('AAAAAAA', initialStates[0].shape, initialStates[1].shape)
         batch_size = initialStates[0].shape[1]
         current_char = torch.tensor([self.target_vocab.char2id['{'] for i in range(batch_size)], device=device).unsqueeze(0)
-        output_word = [[] for i in range(batch_size)]
+        output_word = ['' for i in range(batch_size)]
         for t in range(max_length):
             s_t_1, dec_hidden = self.forward(current_char, initialStates)
             # s_t_1 = self.char_output_projection(h_t_1)
@@ -114,11 +121,13 @@ class CharDecoder(nn.Module):
 
             # print('AAAAAAAAA', current_char,  len(current_char.size()))
             # if len(current_char.size())>1:
-            for i in range(current_char.squeeze().shape[0]):
-                if current_char.squeeze()[i] == self.target_vocab.char2id['{'] or current_char.squeeze()[i] == self.target_vocab.char2id['}']:
+            for i in range(batch_size):
+                if current_char[0][i] == self.target_vocab.char2id['{'] or current_char[0][i] == self.target_vocab.char2id['}']:
                     continue
-                output_word[i].append(current_char.squeeze()[i])
-
+                # cc = self.target_vocab[current_char[i]]
+                # ccc = self.target_vocab.id2char[current_char[i].item()]
+                output_word[i] += self.target_vocab.id2char[current_char[0][i].item()]
+        # print(output_word)
         return output_word
         ### YOUR CODE HERE for part 2c
         ### TODO - Implement greedy decoding.

@@ -17,8 +17,8 @@ class Highway(nn.Module):
         #
         # self.W_gate = nn.Parameter(torch.Tensor((word_embed_size, word_embed_size)))
         # self.b_gate = nn.Parameter(torch.Tensor((1, word_embed_size)))
-        self.proj_linear = nn.Linear(word_embed_size, word_embed_size, bias=True)
-        self.gate_linear = nn.Linear(word_embed_size, word_embed_size, bias=True)
+        self.proj_linear = nn.Linear(word_embed_size, word_embed_size, bias=True).to("cuda")
+        self.gate_linear = nn.Linear(word_embed_size, word_embed_size, bias=True).to("cuda")
         self.relu = nn.ReLU()
         self.sigm = nn.Sigmoid()
 
