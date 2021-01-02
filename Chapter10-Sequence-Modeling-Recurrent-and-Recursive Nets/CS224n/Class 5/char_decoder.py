@@ -39,8 +39,14 @@ class CharDecoder(nn.Module):
         ### YOUR CODE HERE for part 2a
         ### TODO - Implement the forward pass of the character decoder.
 
+        input = input.to("cuda")
         char_embeds = self.decoderCharEmb(input)
         h_ts = []
+
+        # dec_hidden[0] = dec_hidden[0].to("cuda")
+        # dec_hidden[1] = dec_hidden[1].to("cuda")
+        if dec_hidden and not dec_hidden[0].is_cuda:
+            dec_hidden = (dec_hidden[0].to("cuda"), dec_hidden[1].to("cuda"))
 
         for i in range(char_embeds.shape[0]):
             x_t = char_embeds[i].unsqueeze(0)
@@ -51,7 +57,7 @@ class CharDecoder(nn.Module):
 
         s_ts = [self.char_output_projection(h_t) for h_t in h_ts]
 
-        return torch.stack(s_ts), dec_hidden
+        return torch.stack(s_ts).to("cuda"), dec_hidden
         ### END YOUR CODE
 
     def train_forward(self, char_sequence, dec_hidden=None):
@@ -70,9 +76,9 @@ class CharDecoder(nn.Module):
         ###       - Carefully read the documentation for nn.CrossEntropyLoss and our handout to see what this criterion have already included:
         ###             https://pytorch.org/docs/stable/nn.html#crossentropyloss
         # pad_sents_char_padded = pad_sents_char(char_sequence, self.target_vocab.char_pad)
-
+        char_sequence = char_sequence.to("cuda")
         loss = 0
-        nll_loss = nn.CrossEntropyLoss(reduction='mean')
+        nll_loss = nn.CrossEntropyLoss(reduction='mean').to("cuda")
         # target_sequence = char_sequence[1:].clone()
         target_sequence = char_sequence[1:]
         char_sequence[char_sequence == self.target_vocab.end_of_word] = self.target_vocab.char_pad
