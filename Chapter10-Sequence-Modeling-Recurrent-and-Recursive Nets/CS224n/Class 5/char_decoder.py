@@ -7,6 +7,9 @@ CS224N 2019-20: Homework 5
 
 import torch
 import torch.nn as nn
+from torch.nn.utils.rnn import pad_packed_sequence, pack_padded_sequence
+
+from utils import pad_sents_char
 
 
 class CharDecoder(nn.Module):
@@ -36,6 +39,19 @@ class CharDecoder(nn.Module):
         ### YOUR CODE HERE for part 2a
         ### TODO - Implement the forward pass of the character decoder.
 
+        char_embeds = self.decoderCharEmb(input)
+        h_ts = []
+
+        for i in range(char_embeds.shape[0]):
+            x_t = char_embeds[i].unsqueeze(0)
+            # if len(x_t.size())==2:
+            #     x_t = x_t.unsqueeze(0)
+            h_t, dec_hidden = self.charDecoder(x_t, dec_hidden)
+            h_ts.append(h_t.squeeze())
+
+        s_ts = [self.char_output_projection(h_t) for h_t in h_ts]
+
+        return torch.stack(s_ts), dec_hidden
         ### END YOUR CODE
 
     def train_forward(self, char_sequence, dec_hidden=None):
@@ -53,7 +69,29 @@ class CharDecoder(nn.Module):
         ###       - char_sequence corresponds to the sequence x_1 ... x_{n+1} (e.g., <START>,m,u,s,i,c,<END>). Read the handout about how to construct input and target sequence of CharDecoderLSTM.
         ###       - Carefully read the documentation for nn.CrossEntropyLoss and our handout to see what this criterion have already included:
         ###             https://pytorch.org/docs/stable/nn.html#crossentropyloss
+        # pad_sents_char_padded = pad_sents_char(char_sequence, self.target_vocab.char_pad)
 
+        loss = 0
+        nll_loss = nn.CrossEntropyLoss()
+        s_ts, dec_hidden = self.forward(char_sequence, dec_hidden)
+        # char_sequence[:-1, :] = char_sequence[1:,:]
+        # char_sequence[-1,:] = self.target_vocab.char_pad
+        char_sequence = torch.roll(char_sequence, -1, 0)
+        for i in range(s_ts.shape[0]):
+            target = char_sequence[i]
+            s_t = s_ts[i].clone()
+            # s_t*(1 - (target == self.target_vocab.char_pad).int())
+            for j, word in enumerate(target):
+                if word == self.target_vocab.char_pad:
+                    s_t[j,:] = torch.zeros_like(s_t[j,:].clone())
+                    # s_t[j][self.target_vocab.char_pad] = torch.tensor(1, dtype=s_t.dtype)
+                    # s_t[j, :] = 0
+                    s_t[j][self.target_vocab.char_pad] = 1
+
+            # print(i, s_ts.shape, 'AAAAAA', s_t.shape, target.shape)
+            loss += nll_loss(s_t, target)
+            # print(i, s_ts.shape, 'VVVVVV', s_t.shape, target.shape)
+        return loss
         ### END YOUR CODE
 
     def decode_greedy(self, initialStates, device, max_length=21):
@@ -65,7 +103,23 @@ class CharDecoder(nn.Module):
         @returns decodedWords (List[str]): a list (of length batch_size) of strings, each of which has length <= max_length.
                               The decoded strings should NOT contain the start-of-word and end-of-word characters.
         """
+        batch_size = initialStates[0].shape[1]
+        current_char = torch.tensor([self.target_vocab.char2id['{'] for i in range(batch_size)], device=device).unsqueeze(0)
+        output_word = [[] for i in range(batch_size)]
+        for t in range(max_length):
+            s_t_1, dec_hidden = self.forward(current_char, initialStates)
+            # s_t_1 = self.char_output_projection(h_t_1)
+            p_t_1 = torch.softmax(s_t_1, dim=-1)
+            current_char = torch.argmax(p_t_1, dim=-1)
 
+            # print('AAAAAAAAA', current_char,  len(current_char.size()))
+            # if len(current_char.size())>1:
+            for i in range(current_char.squeeze().shape[0]):
+                if current_char.squeeze()[i] == self.target_vocab.char2id['{'] or current_char.squeeze()[i] == self.target_vocab.char2id['}']:
+                    continue
+                output_word[i].append(current_char.squeeze()[i])
+
+        return output_word
         ### YOUR CODE HERE for part 2c
         ### TODO - Implement greedy decoding.
         ### Hints:
