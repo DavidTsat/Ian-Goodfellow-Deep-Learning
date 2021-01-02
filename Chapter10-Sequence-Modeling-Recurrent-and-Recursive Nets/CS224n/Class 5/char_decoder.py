@@ -72,30 +72,38 @@ class CharDecoder(nn.Module):
         # pad_sents_char_padded = pad_sents_char(char_sequence, self.target_vocab.char_pad)
 
         loss = 0
-        nll_loss = nn.CrossEntropyLoss()
-        target_sequence = char_sequence[1:].clone()
+        nll_loss = nn.CrossEntropyLoss(reduction='mean')
+        # target_sequence = char_sequence[1:].clone()
+        target_sequence = char_sequence[1:]
         char_sequence[char_sequence == self.target_vocab.end_of_word] = self.target_vocab.char_pad
-        x_sequence = char_sequence[:-1].clone()
+        # x_sequence = char_sequence[:-1].clone()
+        x_sequence = char_sequence[:-1]
         # char_sequence = torch.roll(char_sequence, -1, 0).clone()
         # char_sequence[-1, :] = self.target_vocab.char_pad
         s_ts, dec_hidden = self.forward(x_sequence, dec_hidden)
+        # s_t_1 = self.char_output_projection(h_t_1)
+        ########################################
+        # p_t_1 = torch.softmax(s_ts, dim=-1)
+        # current_char = torch.argmax(p_t_1, dim=-1)
+        # print('c', current_char)
+        #####################
         # char_sequence[:-1, :] = char_sequence[1:,:].clone()
         # char_sequence[-1] = self.target_vocab.char_pad
         # char_sequence = torch.roll(char_sequence, -1, 0).clone()
         # char_sequence[-1, :] = self.target_vocab.char_pad
         for i in range(s_ts.shape[0]):
             target = target_sequence[i]
-            s_t = s_ts[i].clone()
+            # s_t = s_ts[i]
             # s_t*(1 - (target == self.target_vocab.char_pad).int())
-            for j, word in enumerate(target):
-                if word == self.target_vocab.char_pad:
-                    # s_t[j,:] = torch.zeros_like(s_t[j,:].clone())
-                    # s_t[j][self.target_vocab.char_pad] = torch.tensor(1, dtype=s_t.dtype)
-                    s_t[j] = 0
-                    s_t[j][self.target_vocab.char_pad] = 1
+            # for j, word in enumerate(target): ## BUGGGG
+                # if word == self.target_vocab.char_pad:
+                #     # s_t[j,:] = torch.zeros_like(s_t[j,:].clone())
+                #     # s_t[j][self.target_vocab.char_pad] = torch.tensor(1, dtype=s_t.dtype)
+                #     s_ts[i][j] = 0
+                #     s_ts[i][j][self.target_vocab.char_pad] = 1
 
             # print(i, s_ts.shape, 'AAAAAA', s_t.shape, target.shape)
-            loss = loss + nll_loss(s_t, target)
+            loss = loss + nll_loss(s_ts[i], target)
             # print(i, s_ts.shape, 'VVVVVV', s_t.shape, target.shape)
         return loss
         ### END YOUR CODE
@@ -111,10 +119,12 @@ class CharDecoder(nn.Module):
         """
         # print('AAAAAAA', initialStates[0].shape, initialStates[1].shape)
         batch_size = initialStates[0].shape[1]
-        current_char = torch.tensor([self.target_vocab.char2id['{'] for i in range(batch_size)], device=device).unsqueeze(0)
+        current_char = torch.tensor([self.target_vocab.start_of_word for i in range(batch_size)], device=device).unsqueeze(0)
         output_word = ['' for i in range(batch_size)]
+        dec_hidden = initialStates
         for t in range(max_length):
-            s_t_1, dec_hidden = self.forward(current_char, initialStates)
+            # print('OOOOOO', current_char.shape, dec_hidden[0].shape, dec_hidden[1].shape)
+            s_t_1, dec_hidden = self.forward(current_char, dec_hidden)
             # s_t_1 = self.char_output_projection(h_t_1)
             p_t_1 = torch.softmax(s_t_1, dim=-1)
             current_char = torch.argmax(p_t_1, dim=-1)
@@ -122,10 +132,13 @@ class CharDecoder(nn.Module):
             # print('AAAAAAAAA', current_char,  len(current_char.size()))
             # if len(current_char.size())>1:
             for i in range(batch_size):
-                if current_char[0][i] == self.target_vocab.char2id['{'] or current_char[0][i] == self.target_vocab.char2id['}']:
+                if current_char[0][i] == self.target_vocab.start_of_word or current_char[0][i] == self.target_vocab.end_of_word or \
+                        current_char[0][i] == self.target_vocab.char_pad:
+                    # print('OOOO'*10)
                     continue
                 # cc = self.target_vocab[current_char[i]]
                 # ccc = self.target_vocab.id2char[current_char[i].item()]
+                # print(current_char[0][i].item())
                 output_word[i] += self.target_vocab.id2char[current_char[0][i].item()]
         # print(output_word)
         return output_word
