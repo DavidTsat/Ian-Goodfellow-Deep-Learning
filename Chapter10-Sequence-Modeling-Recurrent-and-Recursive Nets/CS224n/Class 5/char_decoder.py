@@ -7,9 +7,6 @@ CS224N 2019-20: Homework 5
 
 import torch
 import torch.nn as nn
-from torch.nn.utils.rnn import pad_packed_sequence, pack_padded_sequence
-
-from utils import pad_sents_char
 
 
 class CharDecoder(nn.Module):
@@ -43,15 +40,11 @@ class CharDecoder(nn.Module):
         char_embeds = self.decoderCharEmb(input)
         h_ts = []
 
-        # dec_hidden[0] = dec_hidden[0].to("cuda")
-        # dec_hidden[1] = dec_hidden[1].to("cuda")
         if dec_hidden and not dec_hidden[0].is_cuda:
             dec_hidden = (dec_hidden[0].to("cuda"), dec_hidden[1].to("cuda"))
 
         for i in range(char_embeds.shape[0]):
             x_t = char_embeds[i].unsqueeze(0)
-            # if len(x_t.size())==2:
-            #     x_t = x_t.unsqueeze(0)
             h_t, dec_hidden = self.charDecoder(x_t, dec_hidden)
             h_ts.append(h_t[0])
 
@@ -75,42 +68,23 @@ class CharDecoder(nn.Module):
         ###       - char_sequence corresponds to the sequence x_1 ... x_{n+1} (e.g., <START>,m,u,s,i,c,<END>). Read the handout about how to construct input and target sequence of CharDecoderLSTM.
         ###       - Carefully read the documentation for nn.CrossEntropyLoss and our handout to see what this criterion have already included:
         ###             https://pytorch.org/docs/stable/nn.html#crossentropyloss
-        # pad_sents_char_padded = pad_sents_char(char_sequence, self.target_vocab.char_pad)
         char_sequence = char_sequence.to("cuda")
         loss = 0
         nll_loss = nn.CrossEntropyLoss(reduction='mean').to("cuda")
-        # target_sequence = char_sequence[1:].clone()
         target_sequence = char_sequence[1:]
         char_sequence[char_sequence == self.target_vocab.end_of_word] = self.target_vocab.char_pad
-        # x_sequence = char_sequence[:-1].clone()
         x_sequence = char_sequence[:-1]
-        # char_sequence = torch.roll(char_sequence, -1, 0).clone()
-        # char_sequence[-1, :] = self.target_vocab.char_pad
         s_ts, dec_hidden = self.forward(x_sequence, dec_hidden)
-        # s_t_1 = self.char_output_projection(h_t_1)
-        ########################################
-        # p_t_1 = torch.softmax(s_ts, dim=-1)
-        # current_char = torch.argmax(p_t_1, dim=-1)
-        # print('c', current_char)
-        #####################
-        # char_sequence[:-1, :] = char_sequence[1:,:].clone()
-        # char_sequence[-1] = self.target_vocab.char_pad
-        # char_sequence = torch.roll(char_sequence, -1, 0).clone()
-        # char_sequence[-1, :] = self.target_vocab.char_pad
         for i in range(s_ts.shape[0]):
             target = target_sequence[i]
-            # s_t = s_ts[i]
-            # s_t*(1 - (target == self.target_vocab.char_pad).int())
-            # for j, word in enumerate(target): ## BUGGGG
-                # if word == self.target_vocab.char_pad:
-                #     # s_t[j,:] = torch.zeros_like(s_t[j,:].clone())
-                #     # s_t[j][self.target_vocab.char_pad] = torch.tensor(1, dtype=s_t.dtype)
-                #     s_ts[i][j] = 0
-                #     s_ts[i][j][self.target_vocab.char_pad] = 1
-
-            # print(i, s_ts.shape, 'AAAAAA', s_t.shape, target.shape)
+            # masking worsens training, maybe trying without mask
             loss = loss + nll_loss(s_ts[i], target)
-            # print(i, s_ts.shape, 'VVVVVV', s_t.shape, target.shape)
+
+            # pad_char_mask = (target != self.target_vocab.char_pad).float().unsqueeze(1)
+            # predicted = s_ts[i].clone() * pad_char_mask
+            # predicted[~pad_char_mask.byte().squeeze(), self.target_vocab.char_pad] = 1
+            # loss = loss + nll_loss(predicted, target)
+
         return loss
         ### END YOUR CODE
 
@@ -123,30 +97,21 @@ class CharDecoder(nn.Module):
         @returns decodedWords (List[str]): a list (of length batch_size) of strings, each of which has length <= max_length.
                               The decoded strings should NOT contain the start-of-word and end-of-word characters.
         """
-        # print('AAAAAAA', initialStates[0].shape, initialStates[1].shape)
         batch_size = initialStates[0].shape[1]
         current_char = torch.tensor([self.target_vocab.start_of_word for i in range(batch_size)], device=device).unsqueeze(0)
         output_word = ['' for i in range(batch_size)]
         dec_hidden = initialStates
         for t in range(max_length):
-            # print('OOOOOO', current_char.shape, dec_hidden[0].shape, dec_hidden[1].shape)
             s_t_1, dec_hidden = self.forward(current_char, dec_hidden)
-            # s_t_1 = self.char_output_projection(h_t_1)
             p_t_1 = torch.softmax(s_t_1, dim=-1)
             current_char = torch.argmax(p_t_1, dim=-1)
 
-            # print('AAAAAAAAA', current_char,  len(current_char.size()))
-            # if len(current_char.size())>1:
             for i in range(batch_size):
                 if current_char[0][i] == self.target_vocab.start_of_word or current_char[0][i] == self.target_vocab.end_of_word or \
                         current_char[0][i] == self.target_vocab.char_pad:
-                    # print('OOOO'*10)
                     continue
-                # cc = self.target_vocab[current_char[i]]
-                # ccc = self.target_vocab.id2char[current_char[i].item()]
-                # print(current_char[0][i].item())
-                output_word[i] += self.target_vocab.id2char[current_char[0][i].item()]
-        # print(output_word)
+                else:
+                    output_word[i] += self.target_vocab.id2char[current_char[0][i].item()]
         return output_word
         ### YOUR CODE HERE for part 2c
         ### TODO - Implement greedy decoding.

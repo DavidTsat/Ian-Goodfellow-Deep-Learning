@@ -36,9 +36,9 @@ import torch.nn.utils
 #----------
 # CONSTANTS
 #----------
-BATCH_SIZE = 1
+BATCH_SIZE = 5
 EMBED_SIZE = 3
-HIDDEN_SIZE = 256
+HIDDEN_SIZE = 4
 DROPOUT_RATE = 0.0
 
 class DummyVocab():
@@ -126,7 +126,6 @@ def question_2c_sanity_check(decoder):
     print ("-"*80)
     print("Running Sanity Check for Question 2c: CharDecoder.decode_greedy()")
     print ("-"*80)
-    sequence_length = 4
     inpt = torch.zeros(1, BATCH_SIZE, HIDDEN_SIZE, dtype=torch.float)
     initialStates = (inpt, inpt)
     device = decoder.char_output_projection.weight.device
@@ -167,7 +166,6 @@ def main():
         char_embedding_size=EMBED_SIZE,
         target_vocab=char_vocab)
 
-    # question_2c_sanity_check(decoder)
     if args['1e']:
         question_1e_sanity_check()
     elif args['1h']:
