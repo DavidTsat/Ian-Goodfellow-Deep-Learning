@@ -77,8 +77,8 @@ class Encoder(nn.Module):
     def forward(self, x, mask):
         "Pass the (and mask) through each layer in turn."
         for layer in self.layers:
-            x = layer(x, mask)
-        return self.norm(x)
+            x = layer(x, mask) # (batch_size, seq_len, hidden_size)
+        return self.norm(x) # (batch_size, seq_len, hidden_size)
 
 
 class SublayerConnection(nn.Module):
@@ -107,7 +107,7 @@ class EncoderLayer(nn.Module):
         self.size = size
 
     def forward(self, x, mask):
-        x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, mask))
+        x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, mask)) # (batch_size, seq_len, hidden_size)
         return self.sublayer[1](x, self.feed_forward)
 
 
@@ -121,7 +121,7 @@ class Decoder(nn.Module):
 
     def forward(self, x, memory, src_mask, tgt_mask):
         for layer in self.layers:
-            x = layer(x, memory, src_mask, tgt_mask)
+            x = layer(x, memory, src_mask, tgt_mask) # (batch_size, seq_len, hidden_size)
         return self.norm(x)
 
 
@@ -136,10 +136,10 @@ class DecoderLayer(nn.Module):
         self.feed_forward = feed_forward
         self.sublayer = clones(SublayerConnection(size, dropout), 3)
 
-    def forward(self, x, memory, src_mask, tgt_mask):
+    def forward(self, x, memory, src_mask, tgt_mask): # (batch_size, seq_len, hidden_size), (batch_size, src_seq_len, hidden_size), (batch_size, 1, src_seq_len), (batch_size, seq_len, seq_len)
         m = memory
-        x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, tgt_mask))
-        x = self.sublayer[1](x, lambda x: self.src_attn(x, m, m, src_mask))
+        x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, tgt_mask)) # (batch_size, seq_len, hidden_size)
+        x = self.sublayer[1](x, lambda x: self.src_attn(x, m, m, src_mask))  # (batch_size, seq_len, hidden_size)
         return self.sublayer[2](x, self.feed_forward)
 
 def subsequent_mask(size):
@@ -150,11 +150,13 @@ def subsequent_mask(size):
 
 def attention(query, key, value, mask=None, dropout=None):
     "Compute 'Scaled Dot Product Attention'"
-    d_k = query.size(-1)
-    scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
+    d_k = query.size(-1) # hidden_size // heads = d_k
+    scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k) # (batch_size, heads, seq_len, seq_len)
+    s = scores[0][0]
     if mask is not None:
         scores = scores.masked_fill(mask==0, -1e9)
-    p_attn = F.softmax(scores, dim=-1)
+    ss = scores[0][0]
+    p_attn = F.softmax(scores, dim=-1)                                   # (batch_size, heads, seq_len, seq_len)
     if dropout is not None:
         p_attn = dropout(p_attn)
     return torch.matmul(p_attn, value), p_attn
@@ -172,21 +174,28 @@ class MultiHeadedAttention(nn.Module):
         self.attn = None
         self.dropout = nn.Dropout(p=dropout)
 
-    def forward(self, query, key, value, mask=None):
+    def forward(self, query, key, value, mask=None): # (batch_size, seq_len, hidden_size)
         if mask is not None:
             # Same mask applied to all h heads
             mask = mask.unsqueeze(1)
         nbatches = query.size(0)
 
         # 1) Do all the linear projections in batch from d_model => h x d_k
-        query, key, value = [l(x).view(nbatches, -1, self.h, self.d_k).transpose(1, 2)
-                             for l, x in zip(self.linears, (query, key, value))]
+        qkv = []
+        for l, x in zip(self.linears, (query, key, value)):          # (batch_size, seq_len, hidden_size) : (nbatches, seq_len, d_model)
+            proj_x = l(x)                                            # (batch_size, seq_len, hidden_size)
+            proj_x = proj_x.view(nbatches, -1, self.h, self.d_k)     # (batch_size, seq_len, heads, hidden_size//heads)
+            proj_x = proj_x.transpose(1, 2)                          # (batch_size, heads, seq_len, hidden_size//heads)
+            qkv.append(proj_x)
+        query, key, value = qkv
+        # query, key, value = [l(x).view(nbatches, -1, self.h, self.d_k).transpose(1, 2)
+        #                      for l, x in zip(self.linears, (query, key, value))]
 
         # 2) Apply attention on all the projected vectors in batch
-        x, self.attn = attention(query, key, value, mask=mask, dropout=self.dropout)
+        x, self.attn = attention(query, key, value, mask=mask, dropout=self.dropout) # (batch_size, heads, seq_len, hidden_size//heads), (batch_size, heads, seq_len, seq_len)
 
         # 3) "Concat" using a view and apply a final linear
-        x = x.transpose(1, 2).contiguous().view(nbatches, -1, self.h * self.d_k)
+        x = x.transpose(1, 2).contiguous().view(nbatches, -1, self.h * self.d_k) # (batch_size, seq_len, hidden_size)
 
         return self.linears[-1](x)
 
@@ -381,14 +390,14 @@ crit = LabelSmoothing(5, 0, 0.1)
 
 # plt.plot(np.arange(1, 100), [loss(x) for x in range(1, 100)])
 
-def data_gen(V, batch, nbatches):
-    "Generate random data for a src-tgt copy task."
-    for i in range(nbatches):
-        data = torch.from_numpy(np.random.randint(1, V, size=(batch, 10)))
-        data[:, 0] = 1
-        src = Variable(data, requires_grad=False)
-        tgt = Variable(data, requires_grad=False)
-        yield Batch(src, tgt, 0)
+# def data_gen(V, batch, nbatches):
+#     "Generate random data for a src-tgt copy task."
+#     for i in range(nbatches):
+#         data = torch.from_numpy(np.random.randint(1, V, size=(batch, 10)))
+#         data[:, 0] = 1
+#         src = Variable(data, requires_grad=False)
+#         tgt = Variable(data, requires_grad=False)
+#         yield Batch(src, tgt, 0)
 
 
 class SimpleLossCompute:
@@ -410,18 +419,18 @@ class SimpleLossCompute:
         return loss.item() * norm
 
 def greedy_decode(model, src, src_mask, max_len, start_symbol):
-    memory = model.encode(src, src_mask)
-    ys = torch.ones(1, 1).fill_(start_symbol).type_as(src.data)
+    memory = model.encode(src, src_mask) # (1, seq_len, hidden_size)
+    ys = torch.ones(1, 1).fill_(start_symbol).type_as(src.data) # (1,1)
     for i in range(max_len-1):
         out = model.decode(memory, src_mask,
                            Variable(ys),
                            Variable(subsequent_mask(ys.size(1))
                                     .type_as(src.data)))
-        prob = model.generator(out[:, -1])
+        prob = model.generator(out[:, -1]) # (1, vocab_size)
         _, next_word = torch.max(prob, dim = 1)
-        next_word = next_word.data[0]
+        next_word = next_word.data[0] #(1)
         ys = torch.cat([ys,
-                        torch.ones(1, 1).type_as(src.data).fill_(next_word)], dim=1)
+                        torch.ones(1, 1).type_as(src.data).fill_(next_word)], dim=1) # [start_sym, predicted_1, predicted_2, etc.]
     return ys
 
 #
@@ -455,6 +464,51 @@ def rebatch(pad_idx, batch):
     "Fix order in torchtext to match ours"
     src, trg = batch.src.transpose(0, 1), batch.trg.transpose(0, 1)
     return Batch(src, trg, pad_idx)
+
+
+def train_model(valid_iter, BATCH_SIZE=1200):
+    criterion = LabelSmoothing(size=len(TGT.vocab), padding_idx=pad_idx, smoothing=0.1)
+    criterion.cuda()
+
+    train_iter = MyIterator(train, batch_size=BATCH_SIZE, device='cuda',
+                            repeat=False, sort_key=lambda x: (len(x.src), len(x.trg)),
+                            batch_size_fn=batch_size_fn, train=True)
+
+    model_opt = NoamOpt(model.src_embed[0].d_model, 1, 1000,
+                        torch.optim.Adam(model.parameters(), lr=0, betas=(0.9, 0.98), eps=1e-9))
+
+    for epoch in range(10):
+        model.train()
+        run_epoch((rebatch(pad_idx, b) for b in train_iter),
+                  model,
+                  SimpleLossCompute(model.generator, criterion, opt=model_opt))
+        model.eval()
+        loss = run_epoch((rebatch(pad_idx, b) for b in valid_iter),
+                         model,
+                         SimpleLossCompute(model.generator, criterion, opt=None))
+        print(loss)
+
+def validate_model(valid_iter, BATCH_SIZE=1200):
+    for i, batch in enumerate(valid_iter):
+        src = batch.src.transpose(0, 1)[:1] # (1, seq_len)
+        src_mask = (src != SRC.vocab.stoi["<blank>"]).unsqueeze(-2) # (1, 1, seq_len)
+        out = greedy_decode(model, src, src_mask,
+                            max_len=60, start_symbol=TGT.vocab.stoi["<s>"])
+        print("Translation:", end="\t")
+        for i in range(1, out.size(1)):
+            sym = TGT.vocab.itos[out[0, i]]
+            if sym == "</s>": break
+            print(sym, end=" ")
+        print()
+        print("Target:", end="\t")
+        for i in range(1, batch.trg.size(0)):
+            sym = TGT.vocab.itos[batch.trg.data[i, 0]]
+            if sym == "</s>": break
+            print(sym, end=" ")
+        print()
+        break
+
+
 
 if __name__ == '__main__':
     # tmp_model = make_model(10, 10, 2)
@@ -490,29 +544,11 @@ if __name__ == '__main__':
     pad_idx = TGT.vocab.stoi["<blank>"]
     model = make_model(len(SRC.vocab), len(TGT.vocab), N=6)
     model.cuda()
-    criterion = LabelSmoothing(size=len(TGT.vocab), padding_idx=pad_idx, smoothing=0.1)
-    criterion.cuda()
-    BATCH_SIZE = 1200
 
-    train_iter = MyIterator(train, batch_size=BATCH_SIZE, device='cuda',
-                            repeat=False, sort_key=lambda x: (len(x.src), len(x.trg)),
-                            batch_size_fn=batch_size_fn, train=True)
+    BATCH_SIZE=1200
     valid_iter = MyIterator(val, batch_size=BATCH_SIZE, device='cuda',
                             repeat=False, sort_key=lambda x: (len(x.src), len(x.trg)),
                             batch_size_fn=batch_size_fn, train=False)
 
-    model_opt = NoamOpt(model.src_embed[0].d_model, 1, 200,
-                        torch.optim.Adam(model.parameters(), lr=0, betas=(0.9, 0.98), eps=1e-9))
-
-    for epoch in range(10):
-        model.train()
-        run_epoch((rebatch(pad_idx, b) for b in train_iter),
-                  model,
-                  SimpleLossCompute(model.generator, criterion, opt=model_opt))
-        model.eval()
-        loss = run_epoch((rebatch(pad_idx, b) for b in valid_iter),
-                         model,
-                         SimpleLossCompute(model.generator, criterion, opt=None))
-        print(loss)
-
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
+    train_model(valid_iter, BATCH_SIZE)
+    # validate_model(valid_iter, BATCH_SIZE)
